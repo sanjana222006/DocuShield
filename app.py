@@ -1,6 +1,7 @@
 
 import os
 from datetime import datetime, timezone
+from functools import wraps
 from uuid import uuid4
 
 from flask import (
@@ -17,7 +18,6 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 
 
-# Application setup
 app = Flask(__name__)
 
 app.config["SECRET_KEY"] = os.environ.get(
@@ -35,7 +35,8 @@ login_manager = LoginManager(app)
 login_manager.login_view = "login"
 
 
-# Database models
+# DATABASE MODELS
+
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
@@ -49,9 +50,7 @@ class Document(db.Model):
     original_filename = db.Column(db.String(255), nullable=False)
     stored_filename = db.Column(db.String(255), unique=True, nullable=False)
     owner_id = db.Column(
-        db.Integer,
-        db.ForeignKey("user.id"),
-        nullable=False
+        db.Integer, db.ForeignKey("user.id"), nullable=False
     )
     uploaded_at = db.Column(
         db.DateTime(timezone=True),
@@ -63,9 +62,7 @@ class Document(db.Model):
 class AuditLog(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(
-        db.Integer,
-        db.ForeignKey("user.id"),
-        nullable=False
+        db.Integer, db.ForeignKey("user.id"), nullable=False
     )
     document_id = db.Column(db.Integer, nullable=True)
     action = db.Column(db.String(50), nullable=False)
@@ -81,13 +78,28 @@ def load_user(user_id):
     return db.session.get(User, int(user_id))
 
 
-# Homepage
+# ROLE-BASED AUTHORIZATION
+
+def admin_required(view):
+    @wraps(view)
+    @login_required
+    def wrapped_view(*args, **kwargs):
+        if current_user.role != "admin":
+            abort(403)
+        return view(*args, **kwargs)
+
+    return wrapped_view
+
+
+# HOME
+
 @app.route("/")
 def home():
     return render_template("index.html")
 
 
-# Registration
+# REGISTER
+
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "POST":
@@ -117,13 +129,14 @@ def register():
         db.session.add(new_user)
         db.session.commit()
 
-        flash("Registration successful!")
-        return redirect(url_for("register"))
+        flash("Registration successful! Please log in.")
+        return redirect(url_for("login"))
 
     return render_template("register.html")
 
 
-# Login
+# LOGIN
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if current_user.is_authenticated:
@@ -144,14 +157,61 @@ def login():
     return render_template("login.html")
 
 
-# Dashboard
+# USER DASHBOARD
+
 @app.route("/dashboard")
 @login_required
 def dashboard():
-    return render_template("dashboard.html")
+    documents = (
+        Document.query
+        .filter_by(owner_id=current_user.id)
+        .order_by(Document.uploaded_at.desc())
+        .all()
+    )
+
+    return render_template(
+        "dashboard.html",
+        documents=documents
+    )
 
 
-# Logout
+# ADMIN DASHBOARD
+
+@app.route("/admin")
+@admin_required
+def admin_dashboard():
+    documents = (
+        db.session.query(Document, User)
+        .join(User, Document.owner_id == User.id)
+        .order_by(Document.uploaded_at.desc())
+        .all()
+    )
+
+    return render_template(
+        "admin.html",
+        documents=documents,
+        user_count=User.query.count(),
+        document_count=Document.query.count()
+    )
+
+
+# ADMIN AUDIT HISTORY
+
+@app.route("/admin/audit")
+@admin_required
+def admin_audit():
+    logs = (
+        db.session.query(AuditLog, User)
+        .join(User, AuditLog.user_id == User.id)
+        .order_by(AuditLog.id.desc())
+        .all()
+    )
+
+    return render_template("audit.html", logs=logs)
+
+
+# LOGOUT
+
 @app.route("/logout", methods=["POST"])
 @login_required
 def logout():
@@ -159,7 +219,8 @@ def logout():
     return redirect(url_for("login"))
 
 
-# Document upload
+# DOCUMENT UPLOAD
+
 @app.route("/upload", methods=["GET", "POST"])
 @login_required
 def upload_document():
@@ -208,26 +269,22 @@ def upload_document():
         db.session.commit()
 
         flash("Document uploaded successfully!")
-        return redirect(url_for("upload_document"))
+        return redirect(url_for("dashboard"))
 
     return render_template("upload.html")
 
 
-# Document download with authorization and audit logging
+# SECURE DOCUMENT DOWNLOAD
+
 @app.route("/documents/<int:document_id>/download")
 @login_required
 def download_document(document_id):
-
-    # Find requested document
     document = db.session.get(Document, document_id)
 
-    # Do not reveal whether a missing document exists
     if document is None:
         abort(404)
 
-    # Check ownership before allowing access
     if document.owner_id != current_user.id:
-
         audit = AuditLog(
             user_id=current_user.id,
             document_id=document_id,
@@ -236,11 +293,8 @@ def download_document(document_id):
 
         db.session.add(audit)
         db.session.commit()
-
-        # Return 404 to avoid exposing document details
         abort(404)
 
-    # Authorized download audit
     audit = AuditLog(
         user_id=current_user.id,
         document_id=document.id,
@@ -258,7 +312,8 @@ def download_document(document_id):
     )
 
 
-# Run application
+# START APPLICATION
+
 if __name__ == "__main__":
     with app.app_context():
         db.create_all()

@@ -1,0 +1,46 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Audit History | DocuShield</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <main class="container">
+        <h1>Security Audit History</h1>
+
+        <p>
+            <a href="{{ url_for('admin_dashboard') }}">Back to Admin Dashboard</a>
+        </p>
+
+        <table border="1" cellpadding="10">
+            <thead>
+                <tr>
+                    <th>Log ID</th>
+                    <th>User</th>
+                    <th>Document ID</th>
+                    <th>Action</th>
+                    <th>Timestamp</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for log, user in logs %}
+                    <tr>
+                        <td>{{ log.id }}</td>
+                        <td>{{ user.username }}</td>
+                        <td>{{ log.document_id }}</td>
+                        <td>{{ log.action }}</td>
+                        <td>{{ log.timestamp }}</td>
+                    </tr>
+                {% else %}
+                    <tr>
+                        <td colspan="5">No audit records available.</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </main>
+</body>
+</html>

@@ -1,0 +1,53 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Admin Dashboard | DocuShield</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <main class="container">
+        <h1>Admin Dashboard</h1>
+
+        <p>Total Users: {{ user_count }}</p>
+        <p>Total Documents: {{ document_count }}</p>
+
+        <p>
+            <a href="{{ url_for('dashboard') }}">My Dashboard</a>
+            |
+            <a href="{{ url_for('admin_audit') }}">View Audit History</a>
+        </p>
+
+        <h2>All Document Records</h2>
+
+        <p>Admins can view document metadata. File downloads remain owner-only.</p>
+
+        <table border="1" cellpadding="10">
+            <thead>
+                <tr>
+                    <th>Document ID</th>
+                    <th>Filename</th>
+                    <th>Owner</th>
+                    <th>Uploaded At</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for document, owner in documents %}
+                    <tr>
+                        <td>{{ document.id }}</td>
+                        <td>{{ document.original_filename }}</td>
+                        <td>{{ owner.username }}</td>
+                        <td>{{ document.uploaded_at }}</td>
+                    </tr>
+                {% else %}
+                    <tr>
+                        <td colspan="4">No documents available.</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </main>
+</body>
+</html>

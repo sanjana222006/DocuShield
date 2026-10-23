@@ -1,17 +1,72 @@
 
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>DocuShield Dashboard</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Dashboard | DocuShield</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-    <h1>Welcome to DocuShield, {{ current_user.username }}!</h1>
+    <main class="container">
+        <h1>DocuShield Dashboard</h1>
 
-    <a href="{{ url_for('upload_document') }}">Upload Document</a>
+        <p>Welcome, {{ current_user.username }}!</p>
+        <p>Your role: <strong>{{ current_user.role }}</strong></p>
 
-    <form action="{{ url_for('logout') }}" method="POST">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit">Logout</button>
-    </form>
+        {% with messages = get_flashed_messages() %}
+            {% for message in messages %}
+                <p>{{ message }}</p>
+            {% endfor %}
+        {% endwith %}
+
+        <p>
+            <a href="{{ url_for('upload_document') }}">Upload Document</a>
+        </p>
+
+        {% if current_user.role == "admin" %}
+            <p>
+                <a href="{{ url_for('admin_dashboard') }}">Admin Dashboard</a>
+                |
+                <a href="{{ url_for('admin_audit') }}">Audit History</a>
+            </p>
+        {% endif %}
+
+        <h2>My Documents</h2>
+
+        {% if documents %}
+            <table border="1" cellpadding="10">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Filename</th>
+                        <th>Uploaded</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for document in documents %}
+                        <tr>
+                            <td>{{ document.id }}</td>
+                            <td>{{ document.original_filename }}</td>
+                            <td>{{ document.uploaded_at }}</td>
+                            <td>
+                                <a href="{{ url_for('download_document', document_id=document.id) }}">
+                                    Download
+                                </a>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <p>You have not uploaded any documents yet.</p>
+        {% endif %}
+
+        <form action="{{ url_for('logout') }}" method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit">Logout</button>
+        </form>
+    </main>
 </body>
 </html>
