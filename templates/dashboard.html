@@ -1,0 +1,17 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>DocuShield Dashboard</title>
+</head>
+<body>
+    <h1>Welcome to DocuShield, {{ current_user.username }}!</h1>
+
+    <a href="{{ url_for('upload_document') }}">Upload Document</a>
+
+    <form action="{{ url_for('logout') }}" method="POST">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit">Logout</button>
+    </form>
+</body>
+</html>
