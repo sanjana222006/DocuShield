@@ -1,35 +1,52 @@
+
 import os
 from datetime import datetime, timezone
-
-from flask import Flask, render_template
-from flask_sqlalchemy import SQLAlchemy
-from flask_login import LoginManager, UserMixin
-
-from flask import request, redirect, url_for, flash
-from werkzeug.security import generate_password_hash
-from flask_wtf.csrf import CSRFProtect
-from flask_login import login_user, logout_user, login_required, current_user
-from werkzeug.security import check_password_hash
 from uuid import uuid4
-from werkzeug.utils import secure_filename
-from flask import send_from_directory, abort
 
-# First create Flask application
+from flask import (
+    Flask,
+    render_template,
+    request,
+    redirect,
+    url_for,
+    flash,
+    send_from_directory,
+    abort,
+)
+from flask_sqlalchemy import SQLAlchemy
+from flask_login import (
+    LoginManager,
+    UserMixin,
+    login_user,
+    logout_user,
+    login_required,
+    current_user,
+)
+from flask_wtf.csrf import CSRFProtect
+from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
+
+
+# Create Flask application
 app = Flask(__name__)
 
-# Then configure it
-app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "local-development-only")
+# Application configuration
+app.config["SECRET_KEY"] = os.environ.get(
+    "SECRET_KEY", "local-development-only"
+)
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///docushield.db"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-
 app.config["UPLOAD_FOLDER"] = os.path.join(app.instance_path, "uploads")
 app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024
 
+# Initialize extensions
 csrf = CSRFProtect(app)
 db = SQLAlchemy(app)
 
 login_manager = LoginManager(app)
 login_manager.login_view = "login"
+
+
 # User table
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -57,12 +74,21 @@ class User(UserMixin, db.Model):
         default="user"
     )
 
+
 # Document table
 class Document(db.Model):
     id = db.Column(db.Integer, primary_key=True)
 
-    original_filename = db.Column(db.String(255), nullable=False)
-    stored_filename = db.Column(db.String(255), unique=True, nullable=False)
+    original_filename = db.Column(
+        db.String(255),
+        nullable=False
+    )
+
+    stored_filename = db.Column(
+        db.String(255),
+        unique=True,
+        nullable=False
+    )
 
     owner_id = db.Column(
         db.Integer,
@@ -75,21 +101,51 @@ class Document(db.Model):
         default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
+
+
+# Security audit log table
+class AuditLog(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("user.id"),
+        nullable=False
+    )
+
+    document_id = db.Column(
+        db.Integer,
+        nullable=True
+    )
+
+    action = db.Column(
+        db.String(50),
+        nullable=False
+    )
+
+    timestamp = db.Column(
+        db.DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )
+
+
+# Load logged-in user
 @login_manager.user_loader
 def load_user(user_id):
     return db.session.get(User, int(user_id))
 
 
+# Homepage
 @app.route("/")
 def home():
     return render_template("index.html")
 
 
+# Registration
 @app.route("/register", methods=["GET", "POST"])
 def register():
-
     if request.method == "POST":
-
         username = request.form.get("username", "").strip()
         email = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")
@@ -120,24 +176,22 @@ def register():
         return redirect(url_for("register"))
 
     return render_template("register.html")
-    
+
+
+# Login
 @app.route("/login", methods=["GET", "POST"])
 def login():
-
     if current_user.is_authenticated:
         return redirect(url_for("dashboard"))
 
     if request.method == "POST":
-
         email = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")
 
         user = User.query.filter_by(email=email).first()
 
         if user and check_password_hash(user.password_hash, password):
-
             login_user(user)
-
             return redirect(url_for("dashboard"))
 
         flash("Invalid email or password.")
@@ -145,18 +199,22 @@ def login():
     return render_template("login.html")
 
 
+# Dashboard
 @app.route("/dashboard")
 @login_required
 def dashboard():
     return render_template("dashboard.html")
 
 
+# Logout
 @app.route("/logout", methods=["POST"])
 @login_required
 def logout():
     logout_user()
     return redirect(url_for("login"))
 
+
+# Upload document
 @app.route("/upload", methods=["GET", "POST"])
 @login_required
 def upload_document():
@@ -167,7 +225,10 @@ def upload_document():
             flash("Please select a document.")
             return redirect(url_for("upload_document"))
 
-        allowed_extensions = {".pdf", ".txt", ".png", ".jpg", ".jpeg"}
+        allowed_extensions = {
+            ".pdf", ".txt", ".png", ".jpg", ".jpeg"
+        }
+
         original_name = secure_filename(file.filename)
         extension = os.path.splitext(original_name)[1].lower()
 
@@ -176,9 +237,18 @@ def upload_document():
             return redirect(url_for("upload_document"))
 
         stored_name = f"{uuid4().hex}{extension}"
-        os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
 
-        file.save(os.path.join(app.config["UPLOAD_FOLDER"], stored_name))
+        os.makedirs(
+            app.config["UPLOAD_FOLDER"],
+            exist_ok=True
+        )
+
+        file.save(
+            os.path.join(
+                app.config["UPLOAD_FOLDER"],
+                stored_name
+            )
+        )
 
         document = Document(
             original_filename=original_name,
@@ -187,16 +257,27 @@ def upload_document():
         )
 
         db.session.add(document)
+        db.session.flush()
+
+        audit = AuditLog(
+            user_id=current_user.id,
+            document_id=document.id,
+            action="UPLOAD"
+        )
+
+        db.session.add(audit)
         db.session.commit()
 
         flash("Document uploaded successfully!")
         return redirect(url_for("upload_document"))
 
     return render_template("upload.html")
+
+
+# Download document - owner only
 @app.route("/documents/<int:document_id>/download")
 @login_required
 def download_document(document_id):
-
     document = Document.query.filter_by(
         id=document_id,
         owner_id=current_user.id
@@ -205,6 +286,15 @@ def download_document(document_id):
     if document is None:
         abort(404)
 
+    audit = AuditLog(
+        user_id=current_user.id,
+        document_id=document.id,
+        action="DOWNLOAD"
+    )
+
+    db.session.add(audit)
+    db.session.commit()
+
     return send_from_directory(
         app.config["UPLOAD_FOLDER"],
         document.stored_filename,
@@ -212,6 +302,8 @@ def download_document(document_id):
         download_name=document.original_filename
     )
 
+
+# Start application
 if __name__ == "__main__":
     with app.app_context():
         db.create_all()
