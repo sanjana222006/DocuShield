@@ -23,7 +23,9 @@ app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get(
     "SECRET_KEY", "local-development-only"
 )
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///docushield.db"
+app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get(
+    "DATABASE_URL", "sqlite:///docushield.db"
+)
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["UPLOAD_FOLDER"] = os.path.join(app.instance_path, "uploads")
 app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024
