@@ -16,6 +16,7 @@ from flask_login import (
 from flask_wtf.csrf import CSRFProtect
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
+from werkzeug.exceptions import NotFound
 
 
 app = Flask(__name__)
@@ -403,24 +404,61 @@ def upload_document():
     return render_template("upload.html")
 
 
+# CENTRALIZED DOCUMENT AUTHORIZATION
+
+def authorize_document(document_id, action="DOWNLOAD"):
+    """
+    Policy:
+    - The document must exist.
+    - Only its owner can access its private contents.
+    - Admin status does not bypass document ownership.
+    - Every denied authenticated request is audited.
+    - Denials return the same HTTP status to avoid revealing ownership.
+    """
+    document = db.session.get(Document, document_id)
+
+    if document is None:
+        reason = "Requested document does not exist"
+    elif document.owner_id != current_user.id:
+        reason = "Authenticated user is not the document owner"
+    else:
+        return document
+
+    record_audit(
+        current_user.id,
+        document_id,
+        "ACCESS_DENIED",
+        "DENIED",
+        reason,
+        f"Requested operation: {action}"
+    )
+    db.session.commit()
+    abort(404)
+
+
 # SECURE DOCUMENT DOWNLOAD
 
 @app.route("/documents/<int:document_id>/download")
 @login_required
 def download_document(document_id):
-    document = db.session.get(Document, document_id)
+    document = authorize_document(document_id, "DOWNLOAD")
 
-    if document is None:
-        abort(404)
-
-    if document.owner_id != current_user.id:
+    # Confirm the file is available before recording an allowed download.
+    try:
+        response = send_from_directory(
+            app.config["UPLOAD_FOLDER"],
+            document.stored_filename,
+            as_attachment=True,
+            download_name=document.original_filename
+        )
+    except NotFound:
         record_audit(
             current_user.id,
-            document_id,
-            "ACCESS_DENIED",
+            document.id,
+            "DOWNLOAD_FAILED",
             "DENIED",
-            "Authenticated user is not the document owner",
-            "Download request rejected"
+            "Document metadata exists but stored file is unavailable",
+            "File delivery could not be prepared"
         )
         db.session.commit()
         abort(404)
@@ -435,12 +473,7 @@ def download_document(document_id):
     )
     db.session.commit()
 
-    return send_from_directory(
-        app.config["UPLOAD_FOLDER"],
-        document.stored_filename,
-        as_attachment=True,
-        download_name=document.original_filename
-    )
+    return response
 
 
 # START APPLICATION

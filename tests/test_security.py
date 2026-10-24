@@ -354,3 +354,65 @@ def test_admin_can_view_authentication_history(client):
 
     assert response.status_code == 200
     assert b"Authentication Security History" in response.data
+
+
+def test_missing_document_attempt_is_audited(client):
+    login_as(client, 1)
+
+    response = client.get("/documents/99999/download")
+
+    assert response.status_code == 404
+
+    with app.app_context():
+        log = AuditLog.query.filter_by(
+            user_id=1,
+            document_id=99999,
+            action="ACCESS_DENIED"
+        ).first()
+
+        assert log is not None
+        assert log.detail.outcome == "DENIED"
+        assert "does not exist" in log.detail.reason
+
+
+def test_missing_physical_file_is_not_logged_as_success(client):
+    from pathlib import Path
+
+    login_as(client, 1)
+
+    with app.app_context():
+        document = db.session.get(Document, 1)
+        file_path = Path(app.config["UPLOAD_FOLDER"]) / document.stored_filename
+        file_path.unlink()
+
+    response = client.get("/documents/1/download")
+
+    assert response.status_code == 404
+
+    with app.app_context():
+        assert AuditLog.query.filter_by(action="DOWNLOAD").count() == 0
+
+        failed = AuditLog.query.filter_by(
+            action="DOWNLOAD_FAILED"
+        ).first()
+
+        assert failed is not None
+        assert failed.detail.outcome == "DENIED"
+
+
+def test_admin_download_denial_has_explanation(client):
+    login_as(client, 3)
+
+    response = client.get("/documents/1/download")
+
+    assert response.status_code == 404
+
+    with app.app_context():
+        log = AuditLog.query.filter_by(
+            user_id=3,
+            action="ACCESS_DENIED"
+        ).first()
+
+        assert log is not None
+        assert log.detail.outcome == "DENIED"
+        assert "not the document owner" in log.detail.reason
