@@ -112,6 +112,34 @@ def record_audit(user_id, document_id, action, outcome, reason, details=""):
     return audit
 
 
+class AuthEvent(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(
+        db.Integer, db.ForeignKey("user.id"), nullable=True
+    )
+    attempted_email = db.Column(db.String(120), nullable=True)
+    action = db.Column(db.String(40), nullable=False)
+    outcome = db.Column(db.String(20), nullable=False)
+    reason = db.Column(db.String(255), nullable=False)
+    auth_method = db.Column(db.String(30), nullable=False, default="PASSWORD")
+    timestamp = db.Column(
+        db.DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )
+
+
+def record_auth_event(action, outcome, reason, user=None, email=None):
+    db.session.add(AuthEvent(
+        user_id=user.id if user else None,
+        attempted_email=email,
+        action=action,
+        outcome=outcome,
+        reason=reason,
+        auth_method="PASSWORD"
+    ))
+
+
 @login_manager.user_loader
 def load_user(user_id):
     return db.session.get(User, int(user_id))
@@ -166,6 +194,13 @@ def register():
         )
 
         db.session.add(new_user)
+        db.session.flush()
+
+        record_auth_event(
+            "REGISTER", "ALLOWED",
+            "New normal-user account created",
+            user=new_user
+        )
         db.session.commit()
 
         flash("Registration successful! Please log in.")
@@ -191,9 +226,23 @@ def login():
 
         if user and check_password_hash(user.password_hash, password):
             login_user(user)
+
+            record_auth_event(
+                "LOGIN", "ALLOWED",
+                "Valid account credentials",
+                user=user
+            )
+            db.session.commit()
             if user.role == "admin":
                 return redirect(url_for("admin_dashboard"))
             return redirect(url_for("dashboard"))
+
+        record_auth_event(
+            "LOGIN", "DENIED",
+            "Invalid credentials",
+            email=email
+        )
+        db.session.commit()
 
         flash("Invalid email or password.")
 
@@ -268,11 +317,32 @@ def admin_audit():
     return render_template("audit.html", logs=logs)
 
 
+
+@app.route("/admin/auth-history")
+@admin_required
+def admin_auth_history():
+    events = (
+        db.session.query(AuthEvent, User)
+        .outerjoin(User, AuthEvent.user_id == User.id)
+        .order_by(AuthEvent.id.desc())
+        .all()
+    )
+    return render_template("auth_history.html", events=events)
+
+
+
 # LOGOUT
 
 @app.route("/logout", methods=["POST"])
 @login_required
 def logout():
+    record_auth_event(
+        "LOGOUT", "ALLOWED",
+        "Authenticated user ended their session",
+        user=current_user
+    )
+    db.session.commit()
+
     logout_user()
     return redirect(url_for("login"))
 

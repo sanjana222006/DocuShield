@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Authentication History | DocuShield</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<main class="container">
+    <h1>Authentication Security History</h1>
+
+    <p>
+        <a href="{{ url_for('admin_dashboard') }}">
+            Back to Admin Dashboard
+        </a>
+    </p>
+
+    <p>Failed-login identifiers are unverified user input.</p>
+
+    <table border="1" cellpadding="10">
+        <thead>
+            <tr>
+                <th>Event ID</th>
+                <th>Verified User</th>
+                <th>Attempted Email</th>
+                <th>Action</th>
+                <th>Outcome</th>
+                <th>Reason</th>
+                <th>Method</th>
+                <th>Timestamp (UTC)</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for event, user in events %}
+            <tr>
+                <td>{{ event.id }}</td>
+                <td>{{ user.username if user else 'Unverified' }}</td>
+                <td>{{ event.attempted_email or '-' }}</td>
+                <td>{{ event.action }}</td>
+                <td>{{ event.outcome }}</td>
+                <td>{{ event.reason }}</td>
+                <td>{{ event.auth_method }}</td>
+                <td>{{ event.timestamp }}</td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="8">No authentication events yet.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</main>
+</body>
+</html>

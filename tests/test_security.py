@@ -286,3 +286,71 @@ def test_user_history_does_not_show_other_users_activity(client):
 
     assert response.status_code == 200
     assert b"OWNER_PRIVATE_ACTIVITY" not in response.data
+
+
+def test_successful_login_is_audited(client):
+    from app import AuthEvent
+
+    response = client.post("/login", data={
+        "email": "owner@example.com",
+        "password": "TestPassword123!"
+    })
+
+    assert response.status_code == 302
+
+    with app.app_context():
+        event = AuthEvent.query.filter_by(
+            user_id=1, action="LOGIN", outcome="ALLOWED"
+        ).first()
+
+        assert event is not None
+        assert event.auth_method == "PASSWORD"
+
+
+def test_failed_login_is_audited_without_verified_identity(client):
+    from app import AuthEvent
+
+    client.post("/login", data={
+        "email": "owner@example.com",
+        "password": "IncorrectPassword123!"
+    })
+
+    with app.app_context():
+        event = AuthEvent.query.filter_by(
+            action="LOGIN", outcome="DENIED"
+        ).first()
+
+        assert event is not None
+        assert event.user_id is None
+        assert event.attempted_email == "owner@example.com"
+
+
+def test_logout_is_audited(client):
+    from app import AuthEvent
+
+    login_as(client, 1)
+    response = client.post("/logout")
+
+    assert response.status_code == 302
+
+    with app.app_context():
+        assert AuthEvent.query.filter_by(
+            user_id=1, action="LOGOUT"
+        ).count() == 1
+
+
+def test_normal_user_cannot_view_authentication_history(client):
+    login_as(client, 1)
+
+    response = client.get("/admin/auth-history")
+
+    assert response.status_code == 403
+
+
+def test_admin_can_view_authentication_history(client):
+    login_as(client, 3)
+
+    response = client.get("/admin/auth-history")
+
+    assert response.status_code == 200
+    assert b"Authentication Security History" in response.data
