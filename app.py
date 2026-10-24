@@ -537,6 +537,83 @@ def rename_document(document_id):
     return redirect(url_for("dashboard"))
 
 
+
+# SECURE DOCUMENT DELETE
+
+@app.route("/documents/<int:document_id>/delete", methods=["POST"])
+@login_required
+def delete_document(document_id):
+    document = authorize_document(document_id, "DELETE")
+
+    original_name = document.original_filename
+    stored_name = document.stored_filename
+
+    file_path = os.path.join(
+        app.config["UPLOAD_FOLDER"],
+        stored_name
+    )
+
+    # Refuse deletion when the physical file is unavailable.
+    if not os.path.isfile(file_path):
+        record_audit(
+            current_user.id,
+            document.id,
+            "DELETE_FAILED",
+            "DENIED",
+            "Stored document file is unavailable",
+            f"Filename: {original_name}"
+        )
+        db.session.commit()
+        abort(404)
+
+    # Keep document metadata for historical evidence.
+    # Rename the physical file to a private deletion marker first.
+    deleted_path = file_path + ".deleted"
+
+    try:
+        os.replace(file_path, deleted_path)
+    except OSError:
+        record_audit(
+            current_user.id,
+            document.id,
+            "DELETE_FAILED",
+            "DENIED",
+            "File deletion preparation failed",
+            f"Filename: {original_name}"
+        )
+        db.session.commit()
+        abort(500)
+
+    try:
+        record_audit(
+            current_user.id,
+            document.id,
+            "DELETE",
+            "ALLOWED",
+            "Authenticated document owner deleted the document",
+            f"Filename: {original_name} | Stored file: {stored_name}"
+        )
+
+        db.session.delete(document)
+        db.session.commit()
+
+    except Exception:
+        db.session.rollback()
+        os.replace(deleted_path, file_path)
+        raise
+
+    try:
+        os.remove(deleted_path)
+    except OSError:
+        app.logger.exception(
+            "Deleted file cleanup failed for document %s",
+            document_id
+        )
+
+    flash("Document deleted successfully.")
+    return redirect(url_for("dashboard"))
+
+
 # START APPLICATION
 
 if __name__ == "__main__":

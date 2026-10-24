@@ -423,7 +423,7 @@ def test_owner_can_rename_document(client):
 
     response = client.post(
         "/documents/1/rename",
-        data={"new_filename": "renamed.pdf"},
+        data={"new_filename": "renamed.txt"},
         follow_redirects=True
     )
 
@@ -431,7 +431,7 @@ def test_owner_can_rename_document(client):
 
     with app.app_context():
         document = db.session.get(Document, 1)
-        assert document.original_filename == "renamed.pdf"
+        assert document.original_filename == "renamed.txt"
 
         log = AuditLog.query.filter_by(
             user_id=1,
@@ -440,7 +440,7 @@ def test_owner_can_rename_document(client):
 
         assert log is not None
         assert log.detail.outcome == "ALLOWED"
-        assert "renamed.pdf" in log.detail.details
+        assert "renamed.txt" in log.detail.details
 
 
 def test_other_user_cannot_rename_document(client):
@@ -504,3 +504,102 @@ def test_admin_cannot_rename_another_users_document(client):
     with app.app_context():
         document = db.session.get(Document, 1)
         assert document.original_filename != "admin-renamed.pdf"
+
+
+def test_owner_can_delete_document_and_audit_remains(client):
+    login_as(client, 1)
+
+    response = client.post("/documents/1/delete")
+
+    assert response.status_code == 302
+
+    with app.app_context():
+        assert db.session.get(Document, 1) is None
+
+        log = AuditLog.query.filter_by(
+            user_id=1,
+            document_id=1,
+            action="DELETE"
+        ).first()
+
+        assert log is not None
+        assert log.detail.outcome == "ALLOWED"
+        assert "private-test.txt" in log.detail.details
+
+    assert client.get("/documents/1/download").status_code == 404
+
+
+def test_other_user_cannot_delete_document(client):
+    login_as(client, 2)
+
+    response = client.post("/documents/1/delete")
+
+    assert response.status_code == 404
+
+    with app.app_context():
+        assert db.session.get(Document, 1) is not None
+
+        log = AuditLog.query.filter_by(
+            user_id=2,
+            action="ACCESS_DENIED"
+        ).first()
+
+        assert log is not None
+        assert log.detail.outcome == "DENIED"
+        assert "DELETE" in log.detail.details
+
+
+def test_admin_cannot_delete_another_users_document(client):
+    login_as(client, 3)
+
+    response = client.post("/documents/1/delete")
+
+    assert response.status_code == 404
+
+    with app.app_context():
+        assert db.session.get(Document, 1) is not None
+
+
+def test_missing_file_cannot_create_successful_delete_audit(client):
+    from pathlib import Path
+
+    login_as(client, 1)
+
+    with app.app_context():
+        document = db.session.get(Document, 1)
+        file_path = Path(app.config["UPLOAD_FOLDER"]) / document.stored_filename
+        file_path.unlink()
+
+    response = client.post("/documents/1/delete")
+
+    assert response.status_code == 404
+
+    with app.app_context():
+        assert db.session.get(Document, 1) is not None
+
+        assert AuditLog.query.filter_by(
+            action="DELETE",
+            user_id=1
+        ).count() == 0
+
+        failed = AuditLog.query.filter_by(
+            action="DELETE_FAILED",
+            user_id=1
+        ).first()
+
+        assert failed is not None
+        assert failed.detail.outcome == "DENIED"
+
+
+def test_delete_requires_authentication(client):
+    response = client.post("/documents/1/delete")
+
+    assert response.status_code in (302, 401)
+
+
+def test_delete_rejects_get_request(client):
+    login_as(client, 1)
+
+    response = client.get("/documents/1/delete")
+
+    assert response.status_code == 405

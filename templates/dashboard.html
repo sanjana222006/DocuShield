@@ -75,6 +75,18 @@
 
                                     <button type="submit">Rename</button>
                                 </form>
+
+                                <form
+                                    action="{{ url_for('delete_document', document_id=document.id) }}"
+                                    method="POST"
+                                    style="margin-top: 10px;"
+                                    onsubmit="return confirm('Permanently delete this document?');"
+                                >
+                                    <input type="hidden"
+                                           name="csrf_token"
+                                           value="{{ csrf_token() }}">
+                                    <button type="submit">Delete</button>
+                                </form>
                             </td>
                         </tr>
                     {% endfor %}
