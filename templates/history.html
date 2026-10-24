@@ -18,6 +18,9 @@
                     <th>Log ID</th>
                     <th>Document ID</th>
                     <th>Action</th>
+                    <th>Outcome</th>
+                    <th>Reason</th>
+                    <th>Details</th>
                     <th>Timestamp (UTC)</th>
                 </tr>
             </thead>
@@ -27,10 +30,13 @@
                     <td>{{ log.id }}</td>
                     <td>{{ log.document_id if log.document_id is not none else '-' }}</td>
                     <td>{{ log.action }}</td>
+                        <td>{{ log.detail.outcome if log.detail else 'LEGACY' }}</td>
+                        <td>{{ log.detail.reason if log.detail else 'Recorded before detailed auditing' }}</td>
+                        <td>{{ log.detail.details if log.detail else '-' }}</td>
                     <td>{{ log.timestamp }}</td>
                 </tr>
                 {% else %}
-                <tr><td colspan="4">No activity recorded yet.</td></tr>
+                <tr><td colspan="7">No activity recorded yet.</td></tr>
                 {% endfor %}
             </tbody>
         </table>

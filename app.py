@@ -75,6 +75,43 @@ class AuditLog(db.Model):
     )
 
 
+class AuditDetail(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    audit_id = db.Column(
+        db.Integer,
+        db.ForeignKey("audit_log.id"),
+        unique=True,
+        nullable=False
+    )
+    outcome = db.Column(db.String(20), nullable=False)
+    reason = db.Column(db.String(255), nullable=False)
+    details = db.Column(db.String(500), nullable=False, default="")
+
+    audit = db.relationship(
+        "AuditLog",
+        backref=db.backref("detail", uselist=False)
+    )
+
+
+def record_audit(user_id, document_id, action, outcome, reason, details=""):
+    audit = AuditLog(
+        user_id=user_id,
+        document_id=document_id,
+        action=action
+    )
+    db.session.add(audit)
+    db.session.flush()
+
+    db.session.add(AuditDetail(
+        audit_id=audit.id,
+        outcome=outcome,
+        reason=reason,
+        details=details
+    ))
+
+    return audit
+
+
 @login_manager.user_loader
 def load_user(user_id):
     return db.session.get(User, int(user_id))
@@ -276,13 +313,14 @@ def upload_document():
         db.session.add(document)
         db.session.flush()
 
-        audit = AuditLog(
-            user_id=current_user.id,
-            document_id=document.id,
-            action="UPLOAD"
+        record_audit(
+            current_user.id,
+            document.id,
+            "UPLOAD",
+            "ALLOWED",
+            "Authenticated user created a document",
+            f"Filename: {document.original_filename}"
         )
-
-        db.session.add(audit)
         db.session.commit()
 
         flash("Document uploaded successfully!")
@@ -302,23 +340,25 @@ def download_document(document_id):
         abort(404)
 
     if document.owner_id != current_user.id:
-        audit = AuditLog(
-            user_id=current_user.id,
-            document_id=document_id,
-            action="ACCESS_DENIED"
+        record_audit(
+            current_user.id,
+            document_id,
+            "ACCESS_DENIED",
+            "DENIED",
+            "Authenticated user is not the document owner",
+            "Download request rejected"
         )
-
-        db.session.add(audit)
         db.session.commit()
         abort(404)
 
-    audit = AuditLog(
-        user_id=current_user.id,
-        document_id=document.id,
-        action="DOWNLOAD"
+    record_audit(
+        current_user.id,
+        document.id,
+        "DOWNLOAD",
+        "ALLOWED",
+        "Authenticated user owns the requested document",
+        f"Filename: {document.original_filename}"
     )
-
-    db.session.add(audit)
     db.session.commit()
 
     return send_from_directory(

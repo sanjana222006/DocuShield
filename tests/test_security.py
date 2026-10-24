@@ -232,3 +232,57 @@ def test_csrf_rejects_missing_token(client):
 
     finally:
         app.config["WTF_CSRF_ENABLED"] = False
+
+
+def test_owner_download_has_detailed_audit(client):
+    from app import AuditDetail
+
+    login_as(client, 1)
+    response = client.get("/documents/1/download")
+
+    assert response.status_code == 200
+
+    with app.app_context():
+        log = AuditLog.query.filter_by(
+            user_id=1, action="DOWNLOAD"
+        ).first()
+
+        detail = AuditDetail.query.filter_by(audit_id=log.id).first()
+
+        assert detail.outcome == "ALLOWED"
+        assert "owns" in detail.reason
+
+
+def test_denied_download_has_detailed_audit(client):
+    from app import AuditDetail
+
+    login_as(client, 2)
+    response = client.get("/documents/1/download")
+
+    assert response.status_code == 404
+
+    with app.app_context():
+        log = AuditLog.query.filter_by(
+            user_id=2, action="ACCESS_DENIED"
+        ).first()
+
+        detail = AuditDetail.query.filter_by(audit_id=log.id).first()
+
+        assert detail.outcome == "DENIED"
+        assert "not the document owner" in detail.reason
+
+
+def test_user_history_does_not_show_other_users_activity(client):
+    with app.app_context():
+        db.session.add(AuditLog(
+            user_id=1,
+            document_id=1,
+            action="OWNER_PRIVATE_ACTIVITY"
+        ))
+        db.session.commit()
+
+    login_as(client, 2)
+    response = client.get("/history")
+
+    assert response.status_code == 200
+    assert b"OWNER_PRIVATE_ACTIVITY" not in response.data

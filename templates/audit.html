@@ -22,6 +22,9 @@
                     <th>User</th>
                     <th>Document ID</th>
                     <th>Action</th>
+                    <th>Outcome</th>
+                    <th>Reason</th>
+                    <th>Details</th>
                     <th>Timestamp</th>
                 </tr>
             </thead>
@@ -32,11 +35,14 @@
                         <td>{{ user.username }}</td>
                         <td>{{ log.document_id }}</td>
                         <td>{{ log.action }}</td>
+                        <td>{{ log.detail.outcome if log.detail else 'LEGACY' }}</td>
+                        <td>{{ log.detail.reason if log.detail else 'Recorded before detailed auditing' }}</td>
+                        <td>{{ log.detail.details if log.detail else '-' }}</td>
                         <td>{{ log.timestamp }}</td>
                     </tr>
                 {% else %}
                     <tr>
-                        <td colspan="5">No audit records available.</td>
+                        <td colspan="8">No audit records available.</td>
                     </tr>
                 {% endfor %}
             </tbody>
