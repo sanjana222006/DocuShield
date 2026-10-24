@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>My Activity History | DocuShield</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <main class="container">
+        <h1>My Activity History</h1>
+
+        <p><a href="{{ url_for('dashboard') }}">Back to Dashboard</a></p>
+
+        <table border="1" cellpadding="10">
+            <thead>
+                <tr>
+                    <th>Log ID</th>
+                    <th>Document ID</th>
+                    <th>Action</th>
+                    <th>Timestamp (UTC)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for log in logs %}
+                <tr>
+                    <td>{{ log.id }}</td>
+                    <td>{{ log.document_id if log.document_id is not none else '-' }}</td>
+                    <td>{{ log.action }}</td>
+                    <td>{{ log.timestamp }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="4">No activity recorded yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </main>
+</body>
+</html>

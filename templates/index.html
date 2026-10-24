@@ -26,7 +26,12 @@
             Store, manage and protect your documents.
         </p>
 
-        <button disabled>Get Started - Coming Soon</button>
+        {% if current_user.is_authenticated %}
+            <p><a href="{{ url_for('dashboard') }}">Open Dashboard</a></p>
+        {% else %}
+            <p><a href="{{ url_for('register') }}">Register</a></p>
+            <p><a href="{{ url_for('login') }}">Login</a></p>
+        {% endif %}
     </main>
 
 </body>

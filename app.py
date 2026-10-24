@@ -177,6 +177,21 @@ def dashboard():
     )
 
 
+
+# PERSONAL ACTIVITY HISTORY
+
+@app.route("/history")
+@login_required
+def my_history():
+    logs = (
+        AuditLog.query
+        .filter_by(user_id=current_user.id)
+        .order_by(AuditLog.id.desc())
+        .all()
+    )
+    return render_template("history.html", logs=logs)
+
+
 # ADMIN DASHBOARD
 
 @app.route("/admin")
