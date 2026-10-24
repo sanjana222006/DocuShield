@@ -8,15 +8,19 @@ def bootstrap_admin():
     email = os.environ.get("ADMIN_EMAIL", "").strip().lower()
     password = os.environ.get("ADMIN_PASSWORD", "")
 
-    # No admin configuration: leave the database unchanged.
-    if not email and not password:
-        return
-
-    if not email or len(password) < 12:
-        raise RuntimeError("ADMIN_EMAIL and ADMIN_PASSWORD (12+ characters) are required.")
-
+    # Always initialize database tables, even without admin credentials.
     with app.app_context():
         db.create_all()
+
+        # Admin provisioning is optional.
+        if not email and not password:
+            print("Database initialized. Admin provisioning skipped.")
+            return
+
+        if not email or len(password) < 12:
+            raise RuntimeError(
+                "ADMIN_EMAIL and ADMIN_PASSWORD (12+ characters) are required."
+            )
 
         existing = User.query.filter_by(email=email).first()
 
