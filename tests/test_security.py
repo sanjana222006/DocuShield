@@ -416,3 +416,91 @@ def test_admin_download_denial_has_explanation(client):
         assert log is not None
         assert log.detail.outcome == "DENIED"
         assert "not the document owner" in log.detail.reason
+
+
+def test_owner_can_rename_document(client):
+    login_as(client, 1)
+
+    response = client.post(
+        "/documents/1/rename",
+        data={"new_filename": "renamed.pdf"},
+        follow_redirects=True
+    )
+
+    assert response.status_code == 200
+
+    with app.app_context():
+        document = db.session.get(Document, 1)
+        assert document.original_filename == "renamed.pdf"
+
+        log = AuditLog.query.filter_by(
+            user_id=1,
+            action="RENAME"
+        ).first()
+
+        assert log is not None
+        assert log.detail.outcome == "ALLOWED"
+        assert "renamed.pdf" in log.detail.details
+
+
+def test_other_user_cannot_rename_document(client):
+    login_as(client, 2)
+
+    response = client.post(
+        "/documents/1/rename",
+        data={"new_filename": "hacked.pdf"}
+    )
+
+    assert response.status_code == 404
+
+    with app.app_context():
+        document = db.session.get(Document, 1)
+        assert document.original_filename != "hacked.pdf"
+
+        log = AuditLog.query.filter_by(
+            user_id=2,
+            action="ACCESS_DENIED"
+        ).first()
+
+        assert log is not None
+        assert log.detail.outcome == "DENIED"
+        assert "RENAME" in log.detail.details
+
+
+def test_rename_cannot_change_file_extension(client):
+    login_as(client, 1)
+
+    response = client.post(
+        "/documents/1/rename",
+        data={"new_filename": "changed.exe"},
+        follow_redirects=True
+    )
+
+    assert response.status_code == 200
+
+    with app.app_context():
+        document = db.session.get(Document, 1)
+        assert document.original_filename != "changed.exe"
+
+        log = AuditLog.query.filter_by(
+            user_id=1,
+            action="RENAME",
+        ).first()
+
+        assert log is not None
+        assert log.detail.outcome == "DENIED"
+
+
+def test_admin_cannot_rename_another_users_document(client):
+    login_as(client, 3)
+
+    response = client.post(
+        "/documents/1/rename",
+        data={"new_filename": "admin-renamed.pdf"}
+    )
+
+    assert response.status_code == 404
+
+    with app.app_context():
+        document = db.session.get(Document, 1)
+        assert document.original_filename != "admin-renamed.pdf"

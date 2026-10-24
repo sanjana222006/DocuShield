@@ -476,6 +476,67 @@ def download_document(document_id):
     return response
 
 
+
+# SECURE DOCUMENT RENAME
+
+@app.route("/documents/<int:document_id>/rename", methods=["POST"])
+@login_required
+def rename_document(document_id):
+    document = authorize_document(document_id, "RENAME")
+
+    new_name = secure_filename(
+        request.form.get("new_filename", "").strip()
+    )
+
+    allowed_extensions = {".pdf", ".txt", ".png", ".jpg", ".jpeg"}
+
+    old_extension = os.path.splitext(
+        document.original_filename
+    )[1].lower()
+
+    new_extension = os.path.splitext(new_name)[1].lower()
+
+    if (
+        not new_name
+        or len(new_name) > 255
+        or new_extension not in allowed_extensions
+        or new_extension != old_extension
+    ):
+        record_audit(
+            current_user.id,
+            document.id,
+            "RENAME",
+            "DENIED",
+            "Invalid filename or attempted file extension change",
+            "Rename rejected"
+        )
+        db.session.commit()
+        flash("Invalid filename. Keep the original file extension.")
+        return redirect(url_for("dashboard"))
+
+    old_name = document.original_filename
+
+    if new_name == old_name:
+        flash("Filename is already the same.")
+        return redirect(url_for("dashboard"))
+
+    document.original_filename = new_name
+
+    record_audit(
+        current_user.id,
+        document.id,
+        "RENAME",
+        "ALLOWED",
+        "Authenticated document owner renamed the document",
+        f"Old: {old_name} | New: {new_name}"
+    )
+
+    db.session.commit()
+
+    flash("Document renamed successfully.")
+    return redirect(url_for("dashboard"))
+
+
 # START APPLICATION
 
 if __name__ == "__main__":
