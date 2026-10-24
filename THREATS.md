@@ -1,55 +1,95 @@
-
 # DocuShield — Security Threat Model
 
-## 1. Project Overview
+## 1. Security Objective
 
-DocuShield is a Flask-based document management application with user authentication, role-based authorization, private document storage, and security audit logging.
+DocuShield is a Flask-based private document management application.
 
-## 2. Assets to Protect
+Its primary security rule is that an authenticated user must not be able to access, rename, or delete a document owned by another user, even by modifying URLs or submitting requests manually.
 
-- User accounts and password hashes
-- Uploaded documents
-- Document ownership information
-- User roles and permissions
-- Security audit records
+An administrator can inspect document metadata and audit records but does not automatically receive permission to download another user's private files.
+
+## 2. Assets and Trust Boundaries
+
+Assets requiring protection:
+
+- Uploaded private documents
+- User credentials and password hashes
+- Document ownership records
+- Administrator privileges
+- Authentication and document audit history
 - Application secret key
 
-## 3. Identified Threats and Mitigations
+The browser is an untrusted client. Document IDs, filenames, form inputs, and requested URLs must not be treated as proof of authorization.
 
-| Threat | Mitigation |
-|---|---|
-| Unauthorized document access | Server-side ownership verification |
-| Access to administrator pages | Admin-only authorization decorator |
-| Unauthenticated access | Flask-Login protection |
-| Password exposure | Password hashing using Werkzeug |
-| CSRF attacks | Flask-WTF CSRF protection |
-| Path traversal through filenames | secure_filename and randomized stored filenames |
-| Dangerous file uploads | Extension allowlist and 5 MB request limit |
-| Unauthorized access attempts | ACCESS_DENIED audit logging |
-| Unauthorized audit-history viewing | Admin-only audit route |
+Security decisions are enforced on the Flask server.
 
-## 4. Audit Events
+## 3. Threats, Mitigations and Verification
 
-The application records:
+| Attack scenario | Implemented protection | Verification |
+|---|---|---|
+| An unauthenticated visitor requests a protected page | Flask-Login authentication checks | Authentication tests |
+| User B changes a document ID in a URL to access User A's file | Server-side document ownership verification; unauthorized access returns 404 | Ownership and denied-access tests |
+| User B attempts to rename or delete User A's document | Shared document authorization check before modification | Authorization tests |
+| An administrator attempts to bypass document ownership | Administrator privileges do not override private-file ownership | Role and ownership tests |
+| An attacker attempts to access administrator audit pages | Admin-only route protection | Role authorization tests |
+| A forged request attempts a protected form action | Flask-WTF CSRF validation | CSRF tests |
+| A user uploads an unsupported extension or oversized request | Extension allowlist and 5 MB request limit | Upload validation tests |
+| A malicious filename attempts path traversal | Filename sanitization and randomized stored filenames | Upload handling and authorization review |
+| A user attempts to change a file's extension during rename | Rename requires the original permitted extension to remain unchanged | Rename validation tests |
+| A document is deleted to conceal its activity history | Audit records are retained independently of the document record | Deletion and audit-retention tests |
+| Authentication failures or unauthorized access go unnoticed | Authentication events and document authorization decisions are logged | Audit tests and manual verification |
+
+## 4. Authorization Design
+
+The application checks the currently authenticated user's identity against the document's stored owner ID.
+
+This check is performed on the server, not through hidden buttons or browser-side restrictions.
+
+A missing or unauthorized document request returns HTTP 404. This avoids confirming another user's document details through the normal response.
+
+Administrator access to metadata and security logs is separate from permission to retrieve private document contents.
+
+## 5. Audit Evidence
+
+Document-related audit actions include:
 
 - UPLOAD
 - DOWNLOAD
+- RENAME
+- DELETE
 - ACCESS_DENIED
 
-Each record contains the acting user ID, document ID, action, and timestamp.
+Audit information records the acting user, document reference, action, timestamp, and additional outcome/reason information.
 
-## 5. Remaining Risks
+Authentication activity, including registration and login events, is tracked separately.
 
-- Extension validation alone does not guarantee safe file contents.
-- No antivirus or malware scanning is implemented.
-- Login rate limiting is not yet implemented.
-- SQLite is intended for this prototype, not a high-concurrency production deployment.
-- Administrators can view document metadata, which requires appropriate organizational trust.
-- Audit logs are stored in the application database and are not tamper-proof.
-- The development debugger and fallback secret key must not be used in public deployment.
+Audit records are retained when a document is deleted through the application.
 
-## 6. Security Testing
+These logs support investigation, but they are not cryptographically tamper-proof.
 
-Automated tests cover authentication, authorization, document ownership, audit logging, rejected file extensions, and CSRF protection.
+## 6. Remaining Risks and Limitations
 
-Manual testing was also performed using two separate user accounts to verify unauthorized document downloads are blocked.
+- File-extension validation cannot establish whether uploaded contents are safe.
+- Antivirus scanning and malware detection are not implemented.
+- Login rate limiting and automated brute-force protection are not implemented.
+- The 5 MB limit restricts request size but does not prevent every form of resource exhaustion.
+- SQLite and local filesystem storage are suitable for this prototype, not a highly available production deployment.
+- Render Free local storage is ephemeral; application data may be lost after a restart or redeployment.
+- Administrators can inspect document metadata, which requires organizational trust.
+- A compromised database administrator could alter audit records.
+- Production deployment requires a strong environment-provided SECRET_KEY and a trusted reverse-proxy configuration.
+- The development debugger and development fallback secret must not be exposed publicly.
+
+## 7. Testing Approach
+
+Automated security tests are maintained in `tests/test_security.py`.
+
+Run them using:
+
+    python -m pytest -q
+
+Latest verified result: **33 tests passed**.
+
+Manual browser verification covered registration, login, upload, download, rename, deletion, and confirmation that activity history remains visible after deletion.
+
+Security claims are limited to implemented and tested behaviour; this prototype is not represented as a fully production-hardened document storage service.
