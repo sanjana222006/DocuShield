@@ -1,3 +1,4 @@
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 import os
 from datetime import datetime, timezone
@@ -20,6 +21,13 @@ from werkzeug.exceptions import NotFound
 
 
 app = Flask(__name__)
+
+# Trust HTTPS information supplied by the immediate reverse proxy.
+app.wsgi_app = ProxyFix(
+    app.wsgi_app,
+    x_proto=1,
+)
+
 
 app.config["SECRET_KEY"] = os.environ.get(
     "SECRET_KEY", "local-development-only"
